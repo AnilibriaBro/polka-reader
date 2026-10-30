@@ -118,6 +118,12 @@ export default function Reader({ book, settings, onSettings, onClose }: Props) {
     });
   }, [chunk]);
   const isLastChunk = chunk ? chunk.idx === count - 1 : false;
+  // Язык куска: латиницы больше кириллицы — значит, книга не русская, переносы ставит браузер
+  // Chunk language: more Latin than Cyrillic letters — not Russian, the browser hyphenates
+  const latin = useMemo(() => {
+    const sample = chunk?.body.slice(0, 3000) ?? '';
+    return (sample.match(/[a-z]/gi)?.length ?? 0) > (sample.match(/[а-яё]/gi)?.length ?? 0);
+  }, [chunk]);
 
   // --- Измерения / Measurements ---
 
@@ -309,7 +315,7 @@ export default function Reader({ book, settings, onSettings, onClose }: Props) {
       <div ref={frame} className="page-frame" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}
         onPointerCancel={() => { touch.current = null; setDrag(0); setAnimate(true); }}>
         <div className="page-clip">
-          <div ref={inner} key={chunk?.idx} lang="ru" className={`columns${animate && !reduceMotion ? ' anim' : ''}`}
+          <div ref={inner} key={chunk?.idx} lang={latin ? 'en' : 'ru'} className={`columns${latin ? ' auto-hyph' : ''}${animate && !reduceMotion ? ' anim' : ''}`}
             style={{ transform: geo ? `translate3d(${-page * geo.step + drag}px,0,0)` : undefined }}>
             {paras.map((p) =>
               p.mark === '#' ? <h3 key={p.key} data-o={p.start} className={p.opening ? 'opening' : ''}>{p.text}</h3>

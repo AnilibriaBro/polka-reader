@@ -18,7 +18,7 @@ export type Book = {
   id: number;
   title: string;
   author: string;
-  format: 'txt' | 'fb2' | 'wiki'; // wiki — скачана из Викитеки / downloaded from Wikisource
+  format: 'txt' | 'fb2' | 'epub' | 'wiki' | 'gutenberg'; // wiki/gutenberg — скачана из библиотеки / downloaded from a library
   totalChars: number;
   cover: string | null; // картинка обложки (data URL) или null — тогда рисую тканевую / cover image or null
   addedAt: number;

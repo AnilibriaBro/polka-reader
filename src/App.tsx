@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { addBook, deleteBook, getBook, listBooks, loadSettings, saveSettings, type Book, type Settings } from './db';
-import { importFile } from './importer';
+import { importBook, importFile } from './importer';
+import { listenForBooks } from './openWith';
 import Find from './Find';
 import Library from './Library';
 import Reader from './Reader';
@@ -32,6 +33,23 @@ export default function App() {
     const t = setTimeout(() => setToast(null), 3200);
     return () => clearTimeout(t);
   }, [toast]);
+
+  // Книга пришла из другого приложения (Telegram, «Файлы») — добавляю и сразу открываю
+  // A book came from another app (Telegram, Files) — add it and open right away
+  useEffect(() => {
+    listenForBooks(async ({ bytes, name }) => {
+      setBusy(`Добавляю «${name}»…`);
+      try {
+        const id = await addBook(await importBook(bytes, name));
+        setBooks(listBooks());
+        setOpen(getBook(id));
+      } catch (e) {
+        setToast(`Не добавлено: ${e instanceof Error ? e.message : 'не получилось прочитать файл'}`);
+      } finally {
+        setBusy(null);
+      }
+    }, setToast);
+  }, []);
 
   const changeSettings = useCallback((s: Settings) => {
     setSettings(s);

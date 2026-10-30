@@ -1,5 +1,6 @@
 import type { NewBook } from './db';
-import { asHeading, clean, toChunks, type Section } from './importer';
+import { toParas } from './html';
+import { sectionsFromParas, toChunks, type Section } from './importer';
 
 // Поиск и скачивание книг из Викитеки (ru.wikisource.org) — свободной библиотеки текстов,
 // у которых закончились авторские права. Всё бесплатно и законно.
@@ -106,44 +107,6 @@ async function fetchPage(title: string): Promise<Page> {
   return { title: real, doc: root, subpages, author: authorLink?.textContent?.trim() ?? '' };
 }
 
-// HTML страницы → абзацы с метками, как у остальных книг / Page HTML → marked paragraphs like other books
-function toParas(root: Element): string[] {
-  const out: string[] = [];
-  let buf = '';
-  const flush = (mark = '') => {
-    const t = clean(buf);
-    buf = '';
-    if (t) out.push(mark + t);
-  };
-  const walk = (el: Element, mark: string) => {
-    for (const n of Array.from(el.childNodes)) {
-      if (n.nodeType === Node.TEXT_NODE) { buf += n.textContent; continue; }
-      if (n.nodeType !== Node.ELEMENT_NODE) continue;
-      const e = n as Element;
-      const tag = e.localName;
-      if (tag === 'br') {
-        // в стихах каждая строка — отдельно / in poems every line stands alone
-        if (mark === '~') flush('~'); else buf += ' ';
-      } else if (/^h[1-6]$/.test(tag)) {
-        flush(mark); buf = e.textContent ?? ''; flush('#');
-      } else if (e.classList.contains('poem') || tag === 'poem') {
-        flush(mark); walk(e, '~'); flush('~'); out.push('');
-      } else if (tag === 'blockquote') {
-        flush(mark); walk(e, '>'); flush('>');
-      } else if (['p', 'div', 'center', 'dd', 'li', 'section', 'dl', 'ul', 'ol', 'table', 'tbody', 'tr', 'td', 'th'].includes(tag)) {
-        flush(mark); walk(e, mark); flush(mark);
-      } else {
-        walk(e, mark); // строчные теги: b, i, span, a… / inline tags
-      }
-    }
-  };
-  walk(root, '');
-  flush();
-  // строки из одних чёрточек и звёздочек-линеек — мусор от старых сканов
-  // lines made only of dashes or rules are leftovers from old scans
-  return out.filter((p) => !/^[~>#]?[-=_—–*\s]{5,}$/.test(p));
-}
-
 // Не главы, а служебные страницы издания / Edition service pages, not chapters
 const SKIP = /\/(Примечания|Комментарии|Приложени[ея]|Варианты|Указатель|Оглавление|Содержание)$/i;
 // Подстраница — это издание? («1960 (СО)», «(ДО)», «Издание 1886») / Is a subpage an edition?
@@ -202,20 +165,7 @@ export async function download(found: Found, onProgress: (done: number, total: n
     // Вся книга на одной странице: оглавление строю по заголовкам внутри неё
     // The whole book on one page: the contents come from its headings
     onProgress(1, 1);
-    const paras = toParas(page.doc).map((p) => {
-      // «ГЛАВА ПЕРВАЯ.» обычным абзацем — тоже заголовок / "ГЛАВА ПЕРВАЯ." as a plain paragraph is a heading too
-      const h = /^[#~>]/.test(p) ? null : asHeading(p);
-      return h ? '#' + h : p;
-    });
-    // Заголовков слишком много (в пьесе каждое «Явление») — в оглавление беру только главы и действия
-    // Too many headings (every scene in a play) — only chapters and acts go to the contents
-    const many = paras.filter((p) => p.startsWith('#')).length > 30;
-    const major = (h: string) => !many || !!asHeading(h) || /^(действие|акт|картина)/i.test(h);
-    for (const p of paras) {
-      const h = p.startsWith('#') && major(p.slice(1)) ? p.slice(1) : null;
-      if (h || !sections.length) sections.push({ title: h, paras: [] });
-      sections[sections.length - 1].paras.push(p);
-    }
+    sections.push(...sectionsFromParas(toParas(page.doc)));
   } else {
     if (chapters.length > 300) throw new Error('Книга слишком большая для скачивания целиком');
     // Главы качаю по 3 сразу, но кладу строго по порядку / Chapters download 3 at a time, kept in order

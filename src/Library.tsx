@@ -29,7 +29,7 @@ type Props = {
   onDelete: (id: number) => void;
 };
 
-const FORMAT = { txt: 'файл TXT', fb2: 'файл FB2', wiki: 'из Викитеки' };
+const FORMAT = { txt: 'файл TXT', fb2: 'файл FB2', epub: 'файл EPUB', wiki: 'из Викитеки', gutenberg: 'из Project Gutenberg' };
 
 export default function Library({ books, busy, onOpen, onAdd, onSample, onFind, onDelete }: Props) {
   const input = useRef<HTMLInputElement>(null);
@@ -66,7 +66,7 @@ export default function Library({ books, busy, onOpen, onAdd, onSample, onFind, 
             <Cover book={{ title: 'Ваша книга', author: '', cover: null }} className="lean" />
           </div>
           <h2>Здесь будут ваши книги</h2>
-          <p>Найдите классику в бесплатной библиотеке или добавьте файл&nbsp;.txt или&nbsp;.fb2 с&nbsp;телефона. Книги хранятся только на этом устройстве, читать можно без интернета.</p>
+          <p>Найдите классику в бесплатной библиотеке или добавьте скачанную книгу (EPUB, FB2, TXT) с&nbsp;телефона. Книги хранятся только на этом устройстве, читать можно без интернета.</p>
           <div className="empty-actions">
             <button className="primary" onClick={onFind} disabled={!!busy}><IconSearch /> Найти книгу</button>
             <button className="ghost" onClick={pick} disabled={!!busy}><IconFile size={20} /> Выбрать файл</button>
@@ -129,7 +129,7 @@ export default function Library({ books, busy, onOpen, onAdd, onSample, onFind, 
           </button>
           <button className="row-btn big" onClick={() => { setAdding(false); pick(); }}>
             <IconFile />
-            <span><b>Выбрать файл</b><small>TXT или FB2 из памяти телефона</small></span>
+            <span><b>Выбрать файл</b><small>EPUB, FB2, TXT или ZIP из памяти телефона</small></span>
           </button>
         </Sheet>
       )}

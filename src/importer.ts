@@ -1,4 +1,7 @@
 import type { NewBook } from './db';
+import { parseEpub } from './epub';
+import { toParas } from './html';
+import { isZip, Zip } from './zip';
 
 // Здесь превращаю файл книги (TXT или FB2) в текст для читалки.
 // Текст храню просто: абзацы через перевод строки. Первый символ абзаца может быть меткой:
@@ -102,7 +105,7 @@ const ROMAN = /^[IVXLC]{1,7}\.?$/;
 // Is the line a chapter heading? If so, return it tidied up, otherwise null.
 export function asHeading(t: string): string | null {
   if (t.length >= 70 || !(HEADING.test(t) || ROMAN.test(t))) return null;
-  return t === t.toUpperCase() && /[А-ЯЁ]{3}/.test(t)
+  return t === t.toUpperCase() && /[А-ЯЁA-Z]{3}/.test(t)
     ? t.toLowerCase()
       .replace(/(^|\s)([ivxlc]+)(?=\s|$|\.)/g, (_, a: string, r: string) => a + r.toUpperCase())
       .replace(/^(\S+\s+[IVXLC\d]+)\s+(\S)/, (_, a: string, c: string) => `${a}. ${c.toUpperCase()}`)
@@ -171,17 +174,45 @@ const named = (el: Element | null | undefined, name: string) => (el ? kids(el).f
 const first = (el: Element | null | undefined, name: string) => named(el, name)[0];
 
 // Обложку уменьшаю до 480 px, чтобы база не разрасталась / Shrinking the cover to 480 px to keep the DB small
-async function shrinkCover(dataUrl: string) {
-  try {
-    const img = new Image();
-    img.src = dataUrl;
-    await img.decode();
-    const k = Math.min(1, 480 / img.naturalHeight);
+// Книга одним потоком абзацев → главы по заголовкам. Если заголовков слишком много (в пьесе каждое
+// «Явление»), главами считаю только «Глава…», «Часть…», «Действие…», номера.
+// One stream of paragraphs → chapters by headings. With too many headings (every scene in a play),
+// only "Chapter…", "Part…", "Act…" and numbers become chapters.
+export function sectionsFromParas(input: string[]): Section[] {
+  const paras = input.map((p) => {
+    // «ГЛАВА ПЕРВАЯ.» обычным абзацем — тоже заголовок / "ГЛАВА ПЕРВАЯ." as a plain paragraph is a heading too
+    if (p.startsWith('#')) return '#' + (asHeading(p.slice(1)) ?? p.slice(1)); // «CHAPTER II.» → «Chapter II.»
+    const h = /^[~>]/.test(p) ? null : asHeading(p);
+    return h ? '#' + h : p;
+  });
+  const many = paras.filter((p) => p.startsWith('#')).length > 30;
+  const major = (h: string) => !many || !!asHeading(h) || /^\d{1,3}\.?$/.test(h) || /^(действие|акт|картина|act|scene|book)/i.test(h);
+  const sections: Section[] = [];
+  for (const p of paras) {
+    const h = p.startsWith('#') && major(p.slice(1)) ? p.slice(1) : null;
+    if (h || !sections.length) sections.push({ title: h, paras: [] });
+    sections[sections.length - 1].paras.push(p);
+  }
+  return sections;
+}
+
+export async function shrinkCover(url: string) {
+  // createImageBitmap работает и когда приложение свёрнуто; если картинка битая или думает
+  // дольше 5 секунд — книга добавится с нарисованной обложкой, а не зависнет
+  // createImageBitmap works even in the background; a broken or slow image (5 s) falls back
+  // to a drawn cover instead of hanging the import
+  const work = async () => {
+    const bmp = await createImageBitmap(await (await fetch(url)).blob());
+    const k = Math.min(1, 480 / bmp.height);
     const c = document.createElement('canvas');
-    c.width = Math.round(img.naturalWidth * k);
-    c.height = Math.round(img.naturalHeight * k);
-    c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+    c.width = Math.max(1, Math.round(bmp.width * k));
+    c.height = Math.max(1, Math.round(bmp.height * k));
+    c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close();
     return c.toDataURL('image/jpeg', 0.82);
+  };
+  try {
+    return await Promise.race([work(), new Promise<null>((r) => setTimeout(() => r(null), 5000))]);
   } catch {
     return null;
   }
@@ -271,14 +302,48 @@ export async function parseFb2(bytes: Uint8Array): Promise<NewBook> {
 
 // --- Вход / Entry point ---
 
-export async function importFile(file: File): Promise<NewBook> {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const name = file.name.toLowerCase();
-  const looksXml = new TextDecoder('ascii').decode(bytes.subarray(0, 400)).includes('<FictionBook');
-  let book: NewBook;
-  if (name.endsWith('.fb2') || looksXml) book = await parseFb2(bytes);
-  else if (name.endsWith('.txt') || file.type.startsWith('text/') || !/\.\w+$/.test(name)) book = parseTxt(decodeText(bytes), file.name);
-  else throw new Error('Этот формат пока не открывается. Подойдут файлы .txt и .fb2');
+const MAX_BOOK = 150 * 1024 * 1024; // файл больше 150 МБ — точно не книга / a file over 150 MB is surely not a book
+
+// Определяю формат по содержимому, а не только по имени: файлы из Telegram и браузера часто
+// приходят с неправильным именем. ZIP-архив с книгой внутри (книга.fb2.zip) распаковываю.
+// Format is detected by content, not just by name: files from Telegram and browsers often come
+// with odd names. A ZIP with a book inside (book.fb2.zip) is unpacked.
+async function importBytes(bytes: Uint8Array, fileName: string, depth = 0): Promise<NewBook> {
+  const name = fileName.toLowerCase();
+  const head = new TextDecoder('ascii').decode(bytes.subarray(0, 400));
+  if (isZip(bytes)) {
+    const zip = new Zip(bytes);
+    if (zip.find('META-INF/container.xml')) return parseEpub(zip);
+    const inner = zip.entries.find((e) => /\.(fb2|epub|txt)$/i.test(e.name) && !e.name.startsWith('__MACOSX'));
+    if (!inner || depth > 0) throw new Error('В архиве нет книги. Подойдут архивы с файлом .fb2, .epub или .txt');
+    return importBytes(await zip.read(inner), inner.name.split('/').pop()!, depth + 1);
+  }
+  if (head.includes('<FictionBook') || name.endsWith('.fb2')) return parseFb2(bytes);
+  // HTML-книга (или страница, сохранённая из браузера) — беру только текст
+  // An HTML book (or a page saved from a browser) — only its text is taken
+  if (/^\s*(<\?xml[^>]*>\s*)?(<!doctype html|<html)/i.test(head)) {
+    const doc = new DOMParser().parseFromString(decodeText(bytes, head.match(/charset=["']?([\w-]+)/i)?.[1]), 'text/html');
+    const title = clean(doc.title) || fileName.replace(/\.[^.]+$/, '');
+    return { title, author: '', format: 'txt', cover: null, ...toChunks(sectionsFromParas(toParas(doc.body))) };
+  }
+  if (/^%PDF/.test(head)) throw new Error('PDF не подходит для чтения с телефона: в нём страницы как картинки. Поищите эту книгу в EPUB или FB2');
+  if (/\.(mobi|azw3?|djvu|docx?|rtf)$/.test(name)) throw new Error('Этот формат не открывается. Подойдут EPUB, FB2, TXT и архивы ZIP с ними');
+  // Похоже на текст: нет нулевых байтов в начале (у картинок и программ они есть)
+  // Looks like text: no zero bytes at the start (images and programs have them)
+  if (bytes.subarray(0, 4096).includes(0) && !(bytes[0] === 0xff || bytes[0] === 0xfe)) {
+    throw new Error('Это не книга. Подойдут EPUB, FB2, TXT и архивы ZIP с ними');
+  }
+  return parseTxt(decodeText(bytes), fileName);
+}
+
+export async function importBook(bytes: Uint8Array, fileName: string): Promise<NewBook> {
+  if (bytes.length > MAX_BOOK) throw new Error('Файл слишком большой для книги');
+  const book = await importBytes(bytes, fileName);
   if (!book.totalChars) throw new Error('В файле нет текста');
   return book;
+}
+
+export async function importFile(file: File): Promise<NewBook> {
+  if (file.size > MAX_BOOK) throw new Error('Файл слишком большой для книги');
+  return importBook(new Uint8Array(await file.arrayBuffer()), file.name);
 }
