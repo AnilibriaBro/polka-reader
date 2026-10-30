@@ -1,5 +1,5 @@
 ﻿# Собирает подписанный APK «Полки» -> Polka.apk рядом с этим файлом.
-# Нужны: Java 21 (%USERPROFILE%\.jdks), Android SDK и ключ подписи в Документы\olympiads-keys.
+# Нужны: Java 21 (%USERPROFILE%\.jdks), Android SDK и ключ подписи (путь — в android\local.properties, polka.keystore=...).
 # Builds the signed "Polka" APK -> Polka.apk next to this file.
 
 $ErrorActionPreference = 'Stop'

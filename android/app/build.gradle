@@ -1,9 +1,16 @@
 apply plugin: 'com.android.application'
 
-// Подписываю тем же ключом, что и «Олимпиады»: он лежит вне проекта (Документы\olympiads-keys)
-// Signed with the same key as "Olympiads"; it lives outside the project (Documents\olympiads-keys)
+// Ключ подписи лежит вне проекта. Путь к файлу с его настройками — в android/local.properties
+// (строка polka.keystore=...), этот файл в репозиторий не попадает.
+// The signing key lives outside the project; the path to its settings file is in android/local.properties
+// (polka.keystore=...), which is never committed.
+def localProps = new Properties()
+def localFile = rootProject.file('local.properties')
+if (localFile.exists()) {
+    localFile.withInputStream { localProps.load(it) }
+}
 def keystoreProps = new Properties()
-def keystoreFile = file('C:/Users/PC/Documents/olympiads-keys/keystore.properties')
+def keystoreFile = file(localProps.getProperty('polka.keystore', 'keystore.properties'))
 if (keystoreFile.exists()) {
     keystoreFile.withInputStream { keystoreProps.load(it) }
 }

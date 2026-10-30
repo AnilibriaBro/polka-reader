@@ -7,4 +7,3 @@ android/.gradle
 android/local.properties
 android/app/release
 android/capacitor-cordova-android-plugins/build
-.claude
