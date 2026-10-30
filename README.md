@@ -134,10 +134,10 @@ python scripts/make_ios_profile.py
 - Код: https://github.com/AnilibriaBro/polka-reader (ветка `master`), опубликовано по команде хозяина 30.10.2026.
 - Веб-версия для iPhone: https://anilibriabro.github.io/polka-reader/ — ветка `gh-pages`, туда кладётся содержимое `dist\`.
   Обновить сайт: `npm run build`, скопировать `dist\` в ветку `gh-pages` (плюс пустой файл `.nojekyll`), закоммитить и отправить.
+- APK для Android: https://github.com/AnilibriaBro/polka-reader/releases/latest/download/Polka.apk (релиз v1.2). Новая версия — новый релиз с файлом `Polka.apk`, ссылка «latest» останется той же.
 - Инструкция по установке для брата: `ИНСТРУКЦИЯ для брата.md`.
 
 ## Что осталось
 
 - Проверить на настоящем Android-телефоне: «Открыть с помощью / Поделиться → Полка» из Telegram и скачивание с Gutenberg.
-- По желанию: выложить APK в «Releases» на GitHub, чтобы его можно было скачать по ссылке.
 - Идеи на потом: поиск по тексту книги, сноски из FB2/EPUB.
