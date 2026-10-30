@@ -20,6 +20,9 @@ type Props = { book: Book; settings: Settings; onSettings: (s: Settings) => void
 type Geo = { w: number; h: number; step: number };
 type SheetName = 'toc' | 'marks' | 'type' | null;
 
+// Номер строфы в стихах: «II.», «12» / A stanza number in verse: "II.", "12"
+const STANZA = /^([IVXLC]+|\d{1,3})\.?$/;
+
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // Прямоугольники строк текста элемента (или самого элемента, если текста нет)
@@ -110,7 +113,8 @@ export default function Reader({ book, settings, onSettings, onClose }: Props) {
       o += line.length + 1;
       const opening = headingRun && mark === '#' && !!chunk.title;
       if (mark !== '#' && line !== '') headingRun = false;
-      return { key: i, mark, text: mark === '#' ? text : hyphenate(text), start, opening };
+      // в заголовках и стихах переносов не ставлю / no hyphenation in headings and verse
+      return { key: i, mark, text: mark === '#' || mark === '~' ? text : hyphenate(text), start, opening };
     });
   }, [chunk]);
   const isLastChunk = chunk ? chunk.idx === count - 1 : false;
@@ -310,7 +314,7 @@ export default function Reader({ book, settings, onSettings, onClose }: Props) {
             {paras.map((p) =>
               p.mark === '#' ? <h3 key={p.key} data-o={p.start} className={p.opening ? 'opening' : ''}>{p.text}</h3>
                 : p.text === '' ? <div key={p.key} data-o={p.start} className="gap" />
-                  : <p key={p.key} data-o={p.start} className={p.mark === '>' ? 'epi' : p.mark === '~' ? 'verse' : ''}>{p.text}</p>)}
+                  : <p key={p.key} data-o={p.start} className={p.mark === '>' ? 'epi' : p.mark !== '~' ? '' : STANZA.test(p.text) ? 'verse stanza' : 'verse'}>{p.text}</p>)}
             {isLastChunk && <div className="the-end" data-o={chunk!.body.length}>Конец</div>}
           </div>
         </div>

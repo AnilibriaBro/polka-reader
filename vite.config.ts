@@ -8,11 +8,12 @@ import react from '@vitejs/plugin-react';
 // 'wasm-unsafe-eval' нужен, чтобы запустить SQLite (он скомпилирован в WebAssembly).
 // 'unsafe-inline' для скриптов нужен мосту Capacitor, который Android встраивает в страницу.
 // Добавляется только в сборку: в режиме разработки Vite нужны свои встроенные скрипты.
-// Page security policy: code and data only from the app itself, it never goes online.
+// Исключение — Викитека: из неё скачиваются книги по кнопке «Найти книгу».
+// Page security policy: code and data only from the app itself; the one exception is Wikisource for «Find a book».
 // 'wasm-unsafe-eval' lets SQLite (compiled to WebAssembly) run.
 const CSP = [
   "default-src 'self'",
-  "connect-src 'self' data: blob:",
+  "connect-src 'self' data: blob: https://ru.wikisource.org",
   "img-src 'self' data: blob:",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",

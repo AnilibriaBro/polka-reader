@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { addBook, deleteBook, getBook, listBooks, loadSettings, saveSettings, type Book, type Settings } from './db';
 import { importFile } from './importer';
+import Find from './Find';
 import Library from './Library';
 import Reader from './Reader';
 
@@ -14,6 +15,7 @@ export default function App() {
   const [books, setBooks] = useState<Book[]>(() => listBooks());
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
   const [open, setOpen] = useState<Book | null>(null);
+  const [finding, setFinding] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -77,12 +79,17 @@ export default function App() {
 
   return (
     <>
-      {open ? (
-        <Reader key={open.id} book={open} settings={settings} onSettings={changeSettings} onClose={close} />
+      {finding ? (
+        // Поиск остаётся под открытой книгой: «Назад» из книги вернёт к результатам,
+        // а начатые скачивания не прервутся
+        // Search stays mounted under an open book: "Back" returns to the results, downloads keep going
+        <Find books={books} onBack={() => setFinding(false)} onAdded={() => setBooks(listBooks())}
+          onOpen={(id) => setOpen(getBook(id))} />
       ) : (
-        <Library books={books} busy={busy} onOpen={(id) => setOpen(getBook(id))}
-          onAdd={(fl) => add(Array.from(fl))} onSample={addSample} onDelete={remove} />
+        !open && <Library books={books} busy={busy} onOpen={(id) => setOpen(getBook(id))}
+          onAdd={(fl) => add(Array.from(fl))} onSample={addSample} onFind={() => setFinding(true)} onDelete={remove} />
       )}
+      {open && <Reader key={open.id} book={open} settings={settings} onSettings={changeSettings} onClose={close} />}
       <div className="toast-zone" aria-live="polite">{toast && <p className="toast">{toast}</p>}</div>
     </>
   );

@@ -49,14 +49,16 @@ export function decodeText(bytes: Uint8Array, declared?: string): string {
 
 // --- Общее / Shared ---
 
-const clean = (s: string) =>
+export const clean = (s: string) =>
   s.replace(/\u00ad/g, '').replace(/\s+/g, ' ').trim();
 
 type Para = string; // абзац с меткой в начале / paragraph with a marker in front
 
 // Собираю абзацы в куски. Новая глава всегда начинает новый кусок.
 // Gathering paragraphs into chunks. A new chapter always starts a new chunk.
-function toChunks(sections: { title: string | null; paras: Para[] }[]): Pick<NewBook, 'chunks' | 'totalChars'> {
+export type Section = { title: string | null; paras: string[] };
+
+export function toChunks(sections: Section[]): Pick<NewBook, 'chunks' | 'totalChars'> {
   const chunks: NewBook['chunks'] = [];
   let pos = 0;
   const push = (title: string | null, paras: Para[]) => {
@@ -95,6 +97,19 @@ function toChunks(sections: { title: string | null; paras: Para[] }[]): Pick<New
 const HEADING = /^(глава|часть|книга|том|пролог|эпилог|предисловие|послесловие|chapter|part|prologue|epilogue)(?![а-яёa-z])[\s.:]*[\dIVXLC]*[\s.:—-]*.{0,60}$/i;
 const ROMAN = /^[IVXLC]{1,7}\.?$/;
 
+// Строка — заголовок главы? Если да, возвращаю его в приличном виде, иначе null.
+// «ГЛАВА II ВОЖАТЫЙ» → «Глава II. Вожатый»: заглавные буквы в оглавлении читаются тяжело.
+// Is the line a chapter heading? If so, return it tidied up, otherwise null.
+export function asHeading(t: string): string | null {
+  if (t.length >= 70 || !(HEADING.test(t) || ROMAN.test(t))) return null;
+  return t === t.toUpperCase() && /[А-ЯЁ]{3}/.test(t)
+    ? t.toLowerCase()
+      .replace(/(^|\s)([ivxlc]+)(?=\s|$|\.)/g, (_, a: string, r: string) => a + r.toUpperCase())
+      .replace(/^(\S+\s+[IVXLC\d]+)\s+(\S)/, (_, a: string, c: string) => `${a}. ${c.toUpperCase()}`)
+      .replace(/^./, (c) => c.toUpperCase())
+    : t;
+}
+
 export function parseTxt(text: string, fileName: string): NewBook {
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
   const nonBlank = lines.filter((l) => l.trim());
@@ -116,20 +131,10 @@ export function parseTxt(text: string, fileName: string): NewBook {
     buf = '';
     if (!t) return;
     const sec = sections[sections.length - 1];
-    if (t.length < 70 && (HEADING.test(t) || ROMAN.test(t) || /^\*\s*\*\s*\*$/.test(t))) {
-      if (/^\*/.test(t)) sec.paras.push('', '#* * *', '');
-      else {
-        // «ГЛАВА II ВОЖАТЫЙ» → «Глава II. Вожатый»: заглавные буквы в оглавлении читаются тяжело
-        // "ГЛАВА II ВОЖАТЫЙ" → "Глава II. Вожатый": all caps read heavily in the contents
-        const nice = t === t.toUpperCase() && /[А-ЯЁ]{3}/.test(t)
-          ? t.toLowerCase()
-            .replace(/(^|\s)([ivxlc]+)(?=\s|$|\.)/g, (_, a: string, r: string) => a + r.toUpperCase())
-            .replace(/^(\S+\s+[IVXLC\d]+)\s+(\S)/, (_, a: string, c: string) => `${a}. ${c.toUpperCase()}`)
-            .replace(/^./, (c) => c.toUpperCase())
-          : t;
-        sections.push({ title: nice, paras: ['#' + nice] });
-      }
-    } else sec.paras.push(t);
+    const heading = asHeading(t);
+    if (/^\*\s*\*\s*\*$/.test(t)) sec.paras.push('', '#* * *', '');
+    else if (heading) sections.push({ title: heading, paras: ['#' + heading] });
+    else sec.paras.push(t);
   };
   for (const raw of lines) {
     const isBlank = !raw.trim();

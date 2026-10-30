@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import type { Book } from './db';
 import Cover from './Cover';
 import Sheet from './Sheet';
-import { IconMore, IconPlus, IconTrash } from './icons';
+import { IconFile, IconMore, IconPlus, IconSearch, IconTrash } from './icons';
 import { isIOS, isNative, isStandalone } from './platform';
 import { hyphenate } from './hyphen';
 
@@ -25,13 +25,17 @@ type Props = {
   onOpen: (id: number) => void;
   onAdd: (files: FileList) => void;
   onSample: () => void;
+  onFind: () => void;
   onDelete: (id: number) => void;
 };
 
-export default function Library({ books, busy, onOpen, onAdd, onSample, onDelete }: Props) {
+const FORMAT = { txt: 'файл TXT', fb2: 'файл FB2', wiki: 'из Викитеки' };
+
+export default function Library({ books, busy, onOpen, onAdd, onSample, onFind, onDelete }: Props) {
   const input = useRef<HTMLInputElement>(null);
   const [menu, setMenu] = useState<Book | null>(null);
   const [confirm, setConfirm] = useState(false);
+  const [adding, setAdding] = useState(false);
   // «Читаю сейчас» — последняя открытая и не дочитанная книга
   // "Reading now" — the last opened book that isn't finished
   const current = books.find((b) => b.openedAt && percent(b) < 100);
@@ -43,7 +47,7 @@ export default function Library({ books, busy, onOpen, onAdd, onSample, onDelete
       <header className="lib-head">
         <h1>Полка</h1>
         {books.length > 0 && (
-          <button className="add-btn" onClick={pick} disabled={!!busy}>
+          <button className="add-btn" onClick={() => setAdding(true)} disabled={!!busy}>
             <IconPlus size={20} /> Добавить книгу
           </button>
         )}
@@ -62,8 +66,11 @@ export default function Library({ books, busy, onOpen, onAdd, onSample, onDelete
             <Cover book={{ title: 'Ваша книга', author: '', cover: null }} className="lean" />
           </div>
           <h2>Здесь будут ваши книги</h2>
-          <p>Добавьте файл .txt или .fb2 из памяти телефона. Книги хранятся только на этом устройстве, интернет для чтения не нужен.</p>
-          <button className="primary" onClick={pick} disabled={!!busy}>Добавить книгу</button>
+          <p>Найдите классику в бесплатной библиотеке или добавьте файл&nbsp;.txt или&nbsp;.fb2 с&nbsp;телефона. Книги хранятся только на этом устройстве, читать можно без интернета.</p>
+          <div className="empty-actions">
+            <button className="primary" onClick={onFind} disabled={!!busy}><IconSearch /> Найти книгу</button>
+            <button className="ghost" onClick={pick} disabled={!!busy}><IconFile size={20} /> Выбрать файл</button>
+          </div>
           <button className="link" onClick={onSample} disabled={!!busy}>Открыть пример: «Капитанская дочка»</button>
         </section>
       )}
@@ -114,16 +121,29 @@ export default function Library({ books, busy, onOpen, onAdd, onSample, onDelete
         </p>
       )}
 
+      {adding && (
+        <Sheet title="Добавить книгу" onClose={() => setAdding(false)}>
+          <button className="row-btn big" onClick={() => { setAdding(false); onFind(); }}>
+            <IconSearch size={22} />
+            <span><b>Найти в библиотеке</b><small>Бесплатная классика из Викитеки, нужен интернет</small></span>
+          </button>
+          <button className="row-btn big" onClick={() => { setAdding(false); pick(); }}>
+            <IconFile />
+            <span><b>Выбрать файл</b><small>TXT или FB2 из памяти телефона</small></span>
+          </button>
+        </Sheet>
+      )}
+
       {menu && (
         <Sheet title={menu.title} onClose={() => setMenu(null)}>
           <p className="sheet-note">
-            {menu.author ? `${menu.author}. ` : ''}Формат {menu.format.toUpperCase()}, {Math.round(menu.totalChars / 1800)} стр. примерно. Прочитано {percent(menu)}&nbsp;%.
+            {menu.author ? `${menu.author}. ` : ''}Книга {FORMAT[menu.format]}, примерно {Math.round(menu.totalChars / 1800)} стр. Прочитано {percent(menu)}&nbsp;%.
           </p>
           {!confirm ? (
             <button className="row-btn danger" onClick={() => setConfirm(true)}><IconTrash /> Удалить книгу</button>
           ) : (
             <div className="confirm">
-              <p>Удалить книгу вместе с закладками? Вернуть её можно, только добавив файл заново.</p>
+              <p>Удалить книгу вместе с закладками? Вернуть её можно, только добавив заново.</p>
               <div className="confirm-row">
                 <button className="ghost" onClick={() => setMenu(null)}>Оставить</button>
                 <button className="primary danger" onClick={() => { onDelete(menu.id); setMenu(null); }}>Удалить</button>
