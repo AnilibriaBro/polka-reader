@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  addBookmark, chunkAt, chunkCount, deleteBookmark, getChunk, listBookmarks, listChapters, savePosition,
+  addBookmark, chunkAt, chunkCount, deleteBookmark, getChunk, listBookmarks, listChapters, listFragments, savePosition,
   type Book, type Bookmark, type Chunk, type Settings,
 } from './db';
 import Sheet from './Sheet';
 import { IconBack, IconBookmark, IconList, IconTrash, IconType } from './icons';
 import { useBack } from './platform';
 import { hyphenate, toPlain, toShown } from './hyphen';
+import { cssFamily, fontById, FONTS, loadFont } from './fonts';
 
 // Экран чтения. Текст куска книги раскладываю в колонки шириной в экран (CSS columns):
 // одна колонка = одна страница, листание = сдвиг колонок. Позицию храню как номер символа,
@@ -48,6 +49,9 @@ export default function Reader({ book, settings, onSettings, onClose }: Props) {
   const inner = useRef<HTMLDivElement>(null);
   const count = useMemo(() => chunkCount(book.id), [book.id]);
   const chapters = useMemo(() => listChapters(book.id), [book.id]);
+  // Оглавление: главы, а если их нет — части книги по первым словам
+  // Contents: chapters, or book parts by their first words when there are none
+  const toc = useMemo(() => (chapters.length ? chapters : listFragments(book.id)), [book.id, chapters]);
 
   const [chunk, setChunk] = useState<Chunk | null>(null);
   const [geo, setGeo] = useState<Geo | null>(null);
@@ -62,6 +66,15 @@ export default function Reader({ book, settings, onSettings, onClose }: Props) {
   const [animate, setAnimate] = useState(false);
   const [scrub, setScrub] = useState<number | null>(null);
   const [layout, setLayout] = useState(0); // счётчик раскладок / layout counter
+  // Выбранный шрифт: когда его файл загрузится — пересчитываю страницы
+  // The chosen font: once its file loads, pages are recounted
+  const font = fontById(settings.font);
+  const [fontTick, setFontTick] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    loadFont(font).then(() => alive && setFontTick((t) => t + 1));
+    return () => { alive = false; };
+  }, [font]);
 
   // Куда встать после раскладки: символ в куске или «конец куска»
   // Where to land after layout: a char inside the chunk or "chunk end"
@@ -187,7 +200,7 @@ export default function Reader({ book, settings, onSettings, onClose }: Props) {
     setPage(t === 'end' ? n - 1 : pageOfOffset(t, n));
     setLayout((v) => v + 1);
     relaid.current = true;
-  }, [chunk, geo, settings.fontSize, settings.font, settings.justify, pageOfOffset]);
+  }, [chunk, geo, settings.fontSize, settings.font, settings.justify, fontTick, pageOfOffset]);
 
   // После листания: запоминаю позицию / After a flip: remember the position
   useLayoutEffect(() => {
@@ -204,7 +217,7 @@ export default function Reader({ book, settings, onSettings, onClose }: Props) {
     savePosition(book.id, atEnd ? book.totalChars : chunk.start + start);
     // (настройки в списке, чтобы этот эффект всегда шёл в одном проходе с раскладкой)
     // (settings are listed so this effect always runs in the same pass as the layout)
-  }, [page, pages, chunk, geo, layout, isLastChunk, book.id, book.totalChars, offsetOfPage, settings.fontSize, settings.font, settings.justify]);
+  }, [page, pages, chunk, geo, layout, isLastChunk, book.id, book.totalChars, offsetOfPage, settings.fontSize, settings.font, settings.justify, fontTick]);
 
   // --- Листание / Flipping ---
 
@@ -305,13 +318,14 @@ export default function Reader({ book, settings, onSettings, onClose }: Props) {
 
   const style = {
     '--fs': `${settings.fontSize}px`,
+    '--read-font': cssFamily(font),
     '--col': geo ? `${geo.w}px` : '100%',
     '--gap': geo ? `${geo.step - geo.w}px` : '0px',
     '--page-h': geo ? `${geo.h}px` : '100%',
   } as React.CSSProperties;
 
   return (
-    <main className={`reader font-${settings.font}${settings.justify ? ' justify' : ''}`} style={style}>
+    <main className={`reader kind-${font.kind}${settings.justify ? ' justify' : ''}`} style={style}>
       <div ref={frame} className="page-frame" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}
         onPointerCancel={() => { touch.current = null; setDrag(0); setAnimate(true); }}>
         <div className="page-clip">
@@ -329,7 +343,11 @@ export default function Reader({ book, settings, onSettings, onClose }: Props) {
       </div>
 
       <footer className="page-foot" aria-hidden={chrome}>
-        <span className="foot-chapter">{chapter?.title ?? book.title}</span>
+        {/* Нажать на название главы — открыть оглавление / Tap the chapter name to open the contents */}
+        <button className="foot-chapter" onClick={() => setSheet('toc')} tabIndex={chrome ? -1 : 0}
+          aria-label={`Оглавление. Сейчас: ${chapter?.title ?? book.title}`}>
+          <IconList size={15} /><span>{chapter?.title ?? book.title}</span>
+        </button>
         <span className="foot-pct">{Math.floor(progress * 100)}&nbsp;%</span>
       </footer>
 
@@ -341,6 +359,7 @@ export default function Reader({ book, settings, onSettings, onClose }: Props) {
             <span>{book.title}</span>
             {book.author && <small>{book.author}</small>}
           </div>
+          <button className="icon-btn" onClick={() => setSheet('toc')} aria-label="Оглавление"><IconList /></button>
           <button className={`icon-btn${pageMarks.length ? ' marked' : ''}`} onClick={toggleMark}
             aria-label={pageMarks.length ? 'Убрать закладку' : 'Добавить закладку'} aria-pressed={pageMarks.length > 0}>
             <IconBookmark filled={pageMarks.length > 0} />
@@ -358,7 +377,7 @@ export default function Reader({ book, settings, onSettings, onClose }: Props) {
               onKeyUp={() => { if (scrub !== null) jump(Math.round(scrub * book.totalChars)); setScrub(null); }} />
           </div>
           <nav className="tools">
-            <button onClick={() => setSheet('toc')} disabled={!chapters.length}><IconList /> Оглавление</button>
+            <button onClick={() => setSheet('toc')}><IconList /> Оглавление</button>
             <button onClick={() => setSheet('marks')}><IconBookmark /> Закладки{marks.length ? ` (${marks.length})` : ''}</button>
             <button onClick={() => setSheet('type')}><IconType /> Шрифт и тема</button>
           </nav>
@@ -367,14 +386,21 @@ export default function Reader({ book, settings, onSettings, onClose }: Props) {
 
       {sheet === 'toc' && (
         <Sheet title="Оглавление" onClose={() => setSheet(null)}>
+          {!chapters.length && <p className="sheet-note">В этой книге нет глав — показываю её части по первым словам.</p>}
           <ol className="toc">
-            {chapters.map((c) => (
-              <li key={c.idx}>
-                <button className={c === chapter ? 'current' : ''} onClick={() => { loadChunk(c.idx, 0); setSheet(null); setChrome(false); }}>
-                  <span>{c.title}</span><small>{pct(c.start)}</small>
-                </button>
-              </li>
-            ))}
+            {toc.map((c) => {
+              const current = chapters.length ? c === chapter : c.idx === chunk?.idx;
+              return (
+                <li key={c.idx}>
+                  {/* текущая глава сразу видна, без прокрутки / the current chapter is scrolled into view */}
+                  <button className={current ? 'current' : ''} aria-current={current || undefined}
+                    ref={current ? (el) => el?.scrollIntoView({ block: 'center' }) : undefined}
+                    onClick={() => { loadChunk(c.idx, 0); setSheet(null); setChrome(false); }}>
+                    <span>{c.title}</span><small>{pct(c.start)}</small>
+                  </button>
+                </li>
+              );
+            })}
           </ol>
         </Sheet>
       )}
@@ -409,14 +435,21 @@ export default function Reader({ book, settings, onSettings, onClose }: Props) {
                 disabled={settings.fontSize >= 30} aria-label="Крупнее">А+</button>
             </div>
           </div>
-          <div className="seg" role="radiogroup" aria-label="Шрифт">
-            {(['serif', 'sans'] as const).map((f) => (
-              <button key={f} role="radio" aria-checked={settings.font === f} className={`font-${f}`}
-                onClick={() => onSettings({ ...settings, font: f })}>
-                <b>Аа</b>{f === 'serif' ? 'С засечками' : 'Без засечек'}
-              </button>
-            ))}
-          </div>
+          {(['serif', 'sans'] as const).map((kind) => (
+            <div key={kind}>
+              <p className="sheet-label">{kind === 'serif' ? 'Шрифт с засечками — как в бумажной книге' : 'Шрифт без засечек'}</p>
+              <div className="fonts" role="radiogroup" aria-label={kind === 'serif' ? 'Шрифты с засечками' : 'Шрифты без засечек'}>
+                {FONTS.filter((f) => f.kind === kind).map((f) => (
+                  <button key={f.id} role="radio" aria-checked={font.id === f.id}
+                    onClick={() => onSettings({ ...settings, font: f.id })}>
+                    <b style={{ fontFamily: cssFamily(f) }}>Аа Бб</b>
+                    <small>{f.name}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <p className="sheet-label">Тема</p>
           <div className="seg themes" role="radiogroup" aria-label="Тема">
             {([['light', 'Светлая'], ['sepia', 'Сепия'], ['dark', 'Тёмная']] as const).map(([t, label]) => (
               <button key={t} role="radio" aria-checked={settings.theme === t} className={`swatch-${t}`}

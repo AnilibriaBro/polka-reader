@@ -223,6 +223,14 @@ export const listChapters = (bookId: number): Chapter[] =>
     idx: r.idx as number, start: r.start as number, title: r.title as string,
   }));
 
+// Книга без глав (обычный TXT): оглавление из её кусков — по первым словам каждого
+// A book without chapters (plain TXT): contents built from its chunks, by their first words
+export const listFragments = (bookId: number): Chapter[] =>
+  rows(library, 'SELECT idx, start, substr(body, 1, 120) AS head FROM chunks WHERE book_id = ? ORDER BY idx', [bookId]).map((r) => {
+    const words = (r.head as string).replace(/(^|\n)[#>~]/g, '$1').replace(/\s+/g, ' ').trim().split(' ').slice(0, 7).join(' ');
+    return { idx: r.idx as number, start: r.start as number, title: `Часть ${(r.idx as number) + 1}. ${words}…` };
+  });
+
 export function savePosition(bookId: number, pos: number) {
   reader.run('UPDATE books SET pos = ?, opened_at = ? WHERE id = ?', [pos, Date.now(), bookId]);
   saveReaderSoon();
@@ -248,11 +256,11 @@ export function deleteBookmark(id: number) {
 export type Settings = {
   theme: 'light' | 'sepia' | 'dark';
   fontSize: number;
-  font: 'serif' | 'sans';
+  font: string; // id шрифта из fonts.ts / font id from fonts.ts
   justify: boolean;
 };
 
-export const defaultSettings: Settings = { theme: 'light', fontSize: 18, font: 'serif', justify: true };
+export const defaultSettings: Settings = { theme: 'light', fontSize: 18, font: 'literata', justify: true };
 
 export function loadSettings(): Settings {
   const r = rows(reader, "SELECT value FROM settings WHERE key = 'reader'")[0];

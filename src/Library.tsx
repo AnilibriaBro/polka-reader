@@ -3,7 +3,7 @@ import type { Book } from './db';
 import Cover from './Cover';
 import Sheet from './Sheet';
 import { IconFile, IconMore, IconPlus, IconSearch, IconTrash } from './icons';
-import { isIOS, isNative, isStandalone } from './platform';
+import InstallCard from './InstallCard';
 import { hyphenate } from './hyphen';
 
 // Экран «Полка»: книга, которую читаю сейчас, и все остальные книги
@@ -113,13 +113,7 @@ export default function Library({ books, busy, onOpen, onAdd, onSample, onFind, 
         </section>
       )}
 
-      {/* Подсказка для веб-версии на iPhone: как поставить иконку на экран «Домой» */}
-      {/* Hint for the iPhone web version: how to add the icon to the Home Screen */}
-      {!isNative && isIOS && !isStandalone && (
-        <p className="install-hint">
-          Чтобы «Полка» открывалась как приложение и без интернета: в Safari нажмите «Поделиться», затем «На экран „Домой“».
-        </p>
-      )}
+      <InstallCard />
 
       {adding && (
         <Sheet title="Добавить книгу" onClose={() => setAdding(false)}>

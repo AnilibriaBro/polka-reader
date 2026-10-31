@@ -11,6 +11,13 @@ const ua = navigator.userAgent;
 // iPad представляется компьютером Mac, но у него сенсорный экран / iPad pretends to be a Mac but has a touch screen
 export const isIOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
 
+export const isAndroid = /Android/.test(ua);
+
+// Где лежат веб-версия, профиль для iPhone и APK / Where the web version, iPhone profile and APK live
+export const SITE = 'https://anilibriabro.github.io/polka-reader/';
+export const IOS_PROFILE_URL = SITE + 'Polka-iPhone.mobileconfig';
+export const APK_URL = 'https://github.com/AnilibriaBro/polka-reader/releases/latest/download/Polka.apk';
+
 // Открыто с иконки на экране «Домой», а не во вкладке Safari / Opened from the Home Screen icon, not a Safari tab
 export const isStandalone =
   window.matchMedia?.('(display-mode: standalone)').matches ||
