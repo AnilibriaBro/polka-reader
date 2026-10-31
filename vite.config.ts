@@ -3,6 +3,7 @@ import { readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import { APP_VERSION, RELEASE_NOTES } from './src/version';
 
 // Политика безопасности страницы: код и данные — только из самого приложения, в интернет оно не ходит.
 // 'wasm-unsafe-eval' нужен, чтобы запустить SQLite (он скомпилирован в WebAssembly).
@@ -13,7 +14,7 @@ import react from '@vitejs/plugin-react';
 // 'wasm-unsafe-eval' lets SQLite (compiled to WebAssembly) run.
 const CSP = [
   "default-src 'self'",
-  "connect-src 'self' data: blob: https://ru.wikisource.org https://www.gutenberg.org",
+  "connect-src 'self' data: blob: https://ru.wikisource.org https://www.gutenberg.org https://anilibriabro.github.io",
   "img-src 'self' data: blob:",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
@@ -77,8 +78,23 @@ self.addEventListener('fetch', (e) => {
   },
 });
 
+// Файл app.json для проверки обновлений: номер версии и что нового — из src/version.ts
+// app.json for update checks: version and notes come from src/version.ts
+const appJson = (): Plugin => ({
+  name: 'app-json',
+  apply: 'build',
+  generateBundle() {
+    const source = JSON.stringify({
+      version: APP_VERSION,
+      url: 'https://github.com/AnilibriaBro/polka-reader/releases/latest/download/Polka.apk',
+      notes: RELEASE_NOTES,
+    }, null, 2);
+    this.emitFile({ type: 'asset', fileName: 'app.json', source });
+  },
+});
+
 // base: './' — чтобы собранные файлы открывались и внутри Android-приложения, и на GitHub Pages.
 export default defineConfig({
   base: './',
-  plugins: [react(), csp(), serviceWorker()],
+  plugins: [react(), csp(), serviceWorker(), appJson()],
 });

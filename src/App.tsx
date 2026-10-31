@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { addBook, deleteBook, getBook, listBooks, loadSettings, saveSettings, type Book, type Settings } from './db';
 import { importBook, importFile } from './importer';
 import { listenForBooks } from './openWith';
+import { isNative } from './platform';
+import { checkRelease, type AppRelease } from './update';
 import Find from './Find';
 import Library from './Library';
 import Reader from './Reader';
@@ -19,6 +21,19 @@ export default function App() {
   const [finding, setFinding] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [release, setRelease] = useState<AppRelease | null>(null);
+
+  // Новая версия: проверяю при запуске и когда приложение снова открывают (только APK —
+  // веб-версия на iPhone обновляется сама)
+  // New version: checked at launch and whenever the app is reopened (APK only — the web version updates itself)
+  useEffect(() => {
+    if (!isNative) return;
+    const check = () => checkRelease().then((r) => r && setRelease(r));
+    check();
+    const onVisible = () => document.visibilityState === 'visible' && check();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
 
   // Тема: на всю страницу и на цвет строки состояния телефона
   // Theme: applied to the whole page and the phone's status bar color
@@ -105,7 +120,8 @@ export default function App() {
           onOpen={(id) => setOpen(getBook(id))} />
       ) : (
         !open && <Library books={books} busy={busy} onOpen={(id) => setOpen(getBook(id))}
-          onAdd={(fl) => add(Array.from(fl))} onSample={addSample} onFind={() => setFinding(true)} onDelete={remove} />
+          onAdd={(fl) => add(Array.from(fl))} onSample={addSample} onFind={() => setFinding(true)} onDelete={remove}
+          release={release} onCloseRelease={() => setRelease(null)} />
       )}
       {open && <Reader key={open.id} book={open} settings={settings} onSettings={changeSettings} onClose={close} />}
       <div className="toast-zone" aria-live="polite">{toast && <p className="toast">{toast}</p>}</div>

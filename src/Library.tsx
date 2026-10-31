@@ -4,6 +4,8 @@ import Cover from './Cover';
 import Sheet from './Sheet';
 import { IconFile, IconMore, IconPlus, IconSearch, IconTrash } from './icons';
 import InstallCard from './InstallCard';
+import type { AppRelease } from './update';
+import { APP_VERSION } from './version';
 import { hyphenate } from './hyphen';
 
 // Экран «Полка»: книга, которую читаю сейчас, и все остальные книги
@@ -27,11 +29,13 @@ type Props = {
   onSample: () => void;
   onFind: () => void;
   onDelete: (id: number) => void;
+  release: AppRelease | null;
+  onCloseRelease: () => void;
 };
 
 const FORMAT = { txt: 'файл TXT', fb2: 'файл FB2', epub: 'файл EPUB', wiki: 'из Викитеки', gutenberg: 'из Project Gutenberg' };
 
-export default function Library({ books, busy, onOpen, onAdd, onSample, onFind, onDelete }: Props) {
+export default function Library({ books, busy, onOpen, onAdd, onSample, onFind, onDelete, release, onCloseRelease }: Props) {
   const input = useRef<HTMLInputElement>(null);
   const [menu, setMenu] = useState<Book | null>(null);
   const [confirm, setConfirm] = useState(false);
@@ -57,6 +61,22 @@ export default function Library({ books, busy, onOpen, onAdd, onSample, onFind, 
       {/* No accept attribute: otherwise Android may grey out .fb2 files */}
       <input ref={input} type="file" multiple hidden
         onChange={(e) => { if (e.target.files?.length) onAdd(e.target.files); e.target.value = ''; }} />
+
+      {/* Вышла новая версия: скачать APK — телефон откроет его в браузере и предложит установить поверх,
+          книги и закладки сохранятся */}
+      {/* A new version is out: the APK opens in the browser and installs over the old one, books stay */}
+      {release && (
+        <aside className="release" role="status">
+          <div>
+            <b>Вышла версия {release.version}</b>
+            {release.notes && <span>{release.notes}</span>}
+          </div>
+          <div className="release-actions">
+            <a className="primary" href={release.url}>Обновить</a>
+            <button className="link" onClick={onCloseRelease}>Позже</button>
+          </div>
+        </aside>
+      )}
 
       {busy && <p className="busy" role="status">{busy}</p>}
 
@@ -114,6 +134,7 @@ export default function Library({ books, busy, onOpen, onAdd, onSample, onFind, 
       )}
 
       <InstallCard />
+      <p className="app-version">Полка {APP_VERSION}</p>
 
       {adding && (
         <Sheet title="Добавить книгу" onClose={() => setAdding(false)}>
